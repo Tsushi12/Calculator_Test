@@ -42,11 +42,12 @@ body{
 }
 .expr{
   color:var(--muted);
-  font-size:14px;
+  font-size:18px;
   line-height:1;
   overflow:hidden;
   text-overflow:ellipsis;
   white-space:nowrap;
+  outline:none;
 }
 .result{
   font-size:28px;
