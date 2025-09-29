@@ -21,7 +21,6 @@
       sel.removeAllRanges();
       sel.addRange(range);
     }
-    exprEl.focus();
   }
 
   function isOpChar(c){ return ['+','-','*','/','^'].includes(c); }
@@ -182,22 +181,19 @@
   });
 
   exprEl.addEventListener('input', (e) => {
-    expr = exprEl.textContent;
-    const sel = window.getSelection();
-    cursorPos = sel.focusOffset;
+    // Prevent direct text input; restore previous expression
+    exprEl.textContent = expr;
     updateDisplay();
   });
 
   exprEl.addEventListener('click', () => {
     const sel = window.getSelection();
     cursorPos = sel.focusOffset;
+    setCursorPosition(cursorPos);
   });
 
   document.addEventListener('keydown', (e) => {
-    if (/[0-9]/.test(e.key)) { appendValue(e.key); e.preventDefault(); }
-    else if (['+','-','*','/','^','(',')','.'].includes(e.key)) { appendValue(e.key); e.preventDefault(); }
-    else if (e.key.toLowerCase() === 'r') { appendValue('√'); e.preventDefault(); }
-    else if (e.key === 'Enter') { computeNow(); e.preventDefault(); }
+    if (e.key === 'Enter') { computeNow(); e.preventDefault(); }
     else if (e.key === 'Backspace') { backspace(); e.preventDefault(); }
     else if (e.key === 'Escape') { clearAll(); e.preventDefault(); }
     else if (e.key === 'ArrowLeft') {
@@ -209,6 +205,9 @@
       cursorPos = Math.min(expr.length, cursorPos + 1);
       setCursorPosition(cursorPos);
       e.preventDefault();
+    }
+    else {
+      e.preventDefault(); // Block all other keyboard input
     }
   });
 
