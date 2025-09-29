@@ -3,61 +3,51 @@
   const resEl = document.getElementById('result');
   const keys = document.getElementById('keys');
   let expr = '';
+  let cursorPos = 0;
 
   function updateDisplay(){
     exprEl.textContent = expr || '0';
     resEl.textContent = previewCompute(expr) ?? '0';
+    setCursorPosition(cursorPos);
   }
 
-  function isOpChar(c){ return c === '+' || c === '-' || c === '*' || c === '/'; }
-  function getLastChar(){ return expr.slice(-1); }
-  function getLastNumber(){
-    let i = expr.length - 1, s = '';
-    while(i >= 0){
-      const ch = expr[i];
-      if (isOpChar(ch)) break;
-      s = ch + s; i--;
+  function setCursorPosition(pos){
+    cursorPos = Math.min(Math.max(0, pos), expr.length);
+    const range = document.createRange();
+    const sel = window.getSelection();
+    if (exprEl.firstChild) {
+      range.setStart(exprEl.firstChild, cursorPos);
+      range.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(range);
     }
-    return s;
+    exprEl.focus();
   }
 
-  function appendDigit(d){
-    if (d === '.'){
-      const last = getLastNumber();
-      if (last.includes('.')) return;
-      if (last === '' || last === '-') expr += '0.';
-      else expr += '.';
-    } else {
-      expr += d;
-    }
+  function isOpChar(c){ return ['+','-','*','/','^'].includes(c); }
+
+  function appendValue(v){
+    expr = expr.slice(0, cursorPos) + v + expr.slice(cursorPos);
+    cursorPos += v.length;
     updateDisplay();
   }
 
-  function appendOperator(op){
-    if (!expr){ if (op === '-') { expr = '-'; updateDisplay(); } return; }
-    const last = getLastChar();
-    const secondLast = expr.slice(-2,-1);
-    if (isOpChar(last)){
-      if (last === '-' && isOpChar(secondLast)){
-        expr = expr.slice(0,-2) + op;
-      } else if (op === '-' && (last === '+' || last === '*' || last === '/')){
-        expr += '-';
-      } else {
-        expr = expr.slice(0,-1) + op;
-      }
-    } else {
-      expr += op;
+  function backspace(){
+    if (cursorPos > 0) {
+      expr = expr.slice(0, cursorPos - 1) + expr.slice(cursorPos);
+      cursorPos--;
+      updateDisplay();
     }
-    updateDisplay();
   }
 
-  function backspace(){ expr = expr.slice(0,-1); updateDisplay(); }
-  function clearAll(){ expr = ''; updateDisplay(); }
+  function clearAll(){
+    expr = '';
+    cursorPos = 0;
+    updateDisplay();
+  }
 
   function previewCompute(input){
     if (!input) return '0';
-    if (/^[+\/*]/.test(input)) return '';
-    if (/[+\-*/]$/.test(input)) input = input.slice(0,-1);
     try {
       const val = evaluateExpression(input);
       return formatResult(val);
@@ -70,12 +60,19 @@
       const value = evaluateExpression(expr);
       const text = formatResult(value);
       if (['Indéterminé','∞','-∞'].includes(text)){
-        resEl.textContent = text; expr = '';
+        resEl.textContent = text;
+        expr = '';
+        cursorPos = 0;
       } else {
-        expr = text; resEl.textContent = text;
+        expr = text;
+        cursorPos = expr.length;
+        resEl.textContent = text;
       }
       exprEl.textContent = expr || '0';
-    } catch(e){ resEl.textContent = 'Erreur'; }
+      setCursorPosition(cursorPos);
+    } catch(e){
+      resEl.textContent = 'Erreur';
+    }
   }
 
   function formatResult(n){
@@ -86,8 +83,8 @@
     return Number(n.toPrecision(12)).toString();
   }
 
+  // --- Analyse et calcul ---
   function evaluateExpression(input){
-    if (!input) return 0;
     const tokens = tokenize(input);
     const rpn = toRPN(tokens);
     return evalRPN(rpn);
@@ -97,27 +94,14 @@
     const tokens = []; let i = 0;
     while(i < s.length){
       const ch = s[i];
-      if (ch === ' '){ i++; continue; }
-      if (ch === '+' || ch === '*' || ch === '/'){ tokens.push(ch); i++; continue; }
-      if (ch === '-'){
-        if (tokens.length === 0 || isOpChar(tokens[tokens.length-1])){
-          let j = i + 1, num = '-'; let hasDigit = false;
-          while(j < s.length && (/\d/.test(s[j]) || s[j] === '.')){
-            if (/\d/.test(s[j])) hasDigit = true;
-            num += s[j]; j++;
-          }
-          if (!hasDigit){ tokens.push('-'); i++; continue; }
-          tokens.push(num); i = j; continue;
-        } else { tokens.push('-'); i++; continue; }
-      }
       if (/\d/.test(ch) || ch === '.'){
-        let j = i, num = '', dotCount = 0;
-        while(j < s.length && (/\d/.test(s[j]) || s[j] === '.')){
-          if (s[j] === '.') dotCount++;
-          if (dotCount > 1) throw new Error('Nombre mal formé');
-          num += s[j]; j++;
-        }
-        tokens.push(num); i = j; continue;
+        let num = '';
+        while(i < s.length && (/\d/.test(s[i]) || s[i]==='.')){ num+=s[i]; i++; }
+        tokens.push(num);
+        continue;
+      }
+      if (['+','-','*','/','^','(',')','√'].includes(ch)){
+        tokens.push(ch); i++; continue;
       }
       i++;
     }
@@ -125,12 +109,28 @@
   }
 
   function toRPN(tokens){
-    const out = [], ops = [], prec = { '+':1,'-':1,'*':2,'/':2 };
+    const out = [], ops = [];
+    const prec = { '+':1, '-':1, '*':2, '/':2, '^':3, '√':4 };
+    const rightAssoc = { '^': true, '√': true };
     for(const t of tokens){
-      if (isOpChar(t)){
-        while(ops.length && isOpChar(ops[ops.length-1]) && prec[ops[ops.length-1]] >= prec[t]) out.push(ops.pop());
+      if (/\d/.test(t[0])){ out.push(t); }
+      else if (t === '('){ ops.push(t); }
+      else if (t === ')'){
+        while(ops.length && ops[ops.length-1] !== '('){ out.push(ops.pop()); }
+        ops.pop();
+      }
+      else {
+        while(
+          ops.length &&
+          ops[ops.length-1] !== '(' &&
+          (
+            rightAssoc[t]
+              ? prec[ops[ops.length-1]] > prec[t]
+              : prec[ops[ops.length-1]] >= prec[t]
+          )
+        ){ out.push(ops.pop()); }
         ops.push(t);
-      } else out.push(t);
+      }
     }
     while(ops.length) out.push(ops.pop());
     return out;
@@ -139,10 +139,15 @@
   function evalRPN(rpn){
     const st = [];
     for(const t of rpn){
-      if (isOpChar(t)){
+      if (/\d/.test(t[0])) st.push(Number(t));
+      else if (t === '√'){
+        const a = st.pop();
+        st.push(Math.sqrt(a));
+      }
+      else {
         const b = st.pop(), a = st.pop();
         st.push(operate(a,b,t));
-      } else st.push(Number(t));
+      }
     }
     if (st.length !== 1) throw new Error('Expression incorrecte');
     return st[0];
@@ -160,10 +165,12 @@
       }
       return a/b;
     }
+    if (op==='^') return Math.pow(a,b);
     return NaN;
   }
 
-  keys.addEventListener('click', (e)=>{
+  // --- Gestion UI ---
+  keys.addEventListener('click', (e) => {
     const btn = e.target.closest('button');
     if (!btn) return;
     const v = btn.dataset.value;
@@ -171,20 +178,38 @@
     if (action === 'clear') return clearAll();
     if (action === 'del') return backspace();
     if (action === 'equals') return computeNow();
-    if (v !== undefined){
-      if (/[0-9]/.test(v)) appendDigit(v);
-      else if (v === '.') appendDigit('.');
-      else if (['+','-','*','/'].includes(v)) appendOperator(v);
-    }
+    if (v !== undefined) appendValue(v);
   });
 
-  document.addEventListener('keydown',(e)=>{
-    if (e.key >= '0' && e.key <= '9'){ appendDigit(e.key); e.preventDefault(); }
-    else if (e.key === '.') { appendDigit('.'); e.preventDefault(); }
-    else if (e.key === 'Enter' || e.key === '='){ computeNow(); e.preventDefault(); }
-    else if (['+','-','*','/'].includes(e.key)){ appendOperator(e.key); e.preventDefault(); }
-    else if (e.key === 'Backspace'){ backspace(); e.preventDefault(); }
-    else if (e.key === 'Escape' || e.key.toLowerCase() === 'c'){ clearAll(); e.preventDefault(); }
+  exprEl.addEventListener('input', (e) => {
+    expr = exprEl.textContent;
+    const sel = window.getSelection();
+    cursorPos = sel.focusOffset;
+    updateDisplay();
+  });
+
+  exprEl.addEventListener('click', () => {
+    const sel = window.getSelection();
+    cursorPos = sel.focusOffset;
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (/[0-9]/.test(e.key)) { appendValue(e.key); e.preventDefault(); }
+    else if (['+','-','*','/','^','(',')','.'].includes(e.key)) { appendValue(e.key); e.preventDefault(); }
+    else if (e.key.toLowerCase() === 'r') { appendValue('√'); e.preventDefault(); }
+    else if (e.key === 'Enter') { computeNow(); e.preventDefault(); }
+    else if (e.key === 'Backspace') { backspace(); e.preventDefault(); }
+    else if (e.key === 'Escape') { clearAll(); e.preventDefault(); }
+    else if (e.key === 'ArrowLeft') {
+      cursorPos = Math.max(0, cursorPos - 1);
+      setCursorPosition(cursorPos);
+      e.preventDefault();
+    }
+    else if (e.key === 'ArrowRight') {
+      cursorPos = Math.min(expr.length, cursorPos + 1);
+      setCursorPosition(cursorPos);
+      e.preventDefault();
+    }
   });
 
   updateDisplay();
