@@ -13,7 +13,11 @@
 html,body{height:100%}
 body{
   margin:0;
-  background:linear-gradient(180deg,#071029 0%, #081424 100%);
+  background-image: url('FrontPic/background.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
   display:flex;
   align-items:center;
   justify-content:center;
@@ -23,7 +27,9 @@ body{
 .calc {
   width:380px;
   max-width:96vw;
-  background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.05));
+  background-image: url('FrontPic/backcalculator.jpg');
+  background-size: cover;
+  background-position: center;
   border-radius:16px;
   padding:18px;
   box-shadow: 0 8px 30px rgba(2,6,23,0.6);
